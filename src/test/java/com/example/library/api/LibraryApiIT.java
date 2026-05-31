@@ -183,3 +183,70 @@ class LibraryApiIT extends AbstractIntegrationTest {
             assertThat(bookResponse.getBody().getAvailableCopies()).isEqualTo(3);
         }
     }
+    
+    @Nested
+    @DisplayName("POST /api/borrows - Error cases")
+    class BorrowErrorsApi {
+
+        @Test
+        @DisplayName("should return 409 when borrowing limit exceeded")
+        void shouldReturn409_WhenBorrowLimitExceeded() {
+            // STUDENT = max 2 kitap
+            Member student = createTestMember("Student", "student@test.com", MembershipType.STUDENT);
+            Book book1 = createTestBook("978-1", "Book One", "Author");
+            Book book2 = createTestBook("978-2", "Book Two", "Author");
+            Book book3 = createTestBook("978-3", "Book Three", "Author");
+
+            restTemplate.postForEntity(baseUrl + "/borrows",
+                    new BorrowRequest(book1.getId(), student.getId()), Map.class);
+            restTemplate.postForEntity(baseUrl + "/borrows",
+                    new BorrowRequest(book2.getId(), student.getId()), Map.class);
+
+            ResponseEntity<Map> response = restTemplate.postForEntity(baseUrl + "/borrows",
+                    new BorrowRequest(book3.getId(), student.getId()), Map.class);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        }
+
+        @Test
+        @DisplayName("should return 409 when no copies available")
+        void shouldReturn409_WhenNoCopiesAvailable() {
+            Book book = new Book("978-SINGLE", "Rare Book", "Author", 1, Genre.TECHNOLOGY);
+            book = bookRepository.save(book);
+
+            Member member1 = createTestMember("Alice", "alice@test.com", MembershipType.STANDARD);
+            Member member2 = createTestMember("Bob", "bob@test.com", MembershipType.STANDARD);
+
+            restTemplate.postForEntity(baseUrl + "/borrows",
+                    new BorrowRequest(book.getId(), member1.getId()), Map.class);
+
+            ResponseEntity<Map> response = restTemplate.postForEntity(baseUrl + "/borrows",
+                    new BorrowRequest(book.getId(), member2.getId()), Map.class);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        }
+
+        @Test
+        @DisplayName("should return 404 when member does not exist")
+        void shouldReturn404_WhenMemberNotFound() {
+            Book book = createTestBook("978-1", "Any Book", "Author");
+            BorrowRequest request = new BorrowRequest(book.getId(), 9999L);
+
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    baseUrl + "/borrows", request, Map.class);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("should return 404 when book does not exist")
+        void shouldReturn404_WhenBookNotFound() {
+            Member member = createTestMember("Alice", "alice@test.com", MembershipType.STANDARD);
+            BorrowRequest request = new BorrowRequest(9999L, member.getId());
+
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    baseUrl + "/borrows", request, Map.class);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        }
+    }
