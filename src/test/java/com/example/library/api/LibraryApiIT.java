@@ -250,3 +250,90 @@ class LibraryApiIT extends AbstractIntegrationTest {
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         }
     }
+
+    @Nested
+    @DisplayName("Member API")
+    class MemberApiTests {
+
+        @Test
+        @DisplayName("should create a member and return 201")
+        void shouldCreateMember() {
+            Member newMember = new Member("Test User", "testuser@test.com", MembershipType.STANDARD);
+
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    baseUrl + "/members", newMember, Map.class);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().get("name")).isEqualTo("Test User");
+            assertThat(response.getBody().get("active")).isEqualTo(true);
+        }
+
+        @Test
+        @DisplayName("should deactivate a member via DELETE")
+        void shouldDeactivateMember() {
+            Member member = createTestMember("Alice", "alice@test.com", MembershipType.STANDARD);
+
+            restTemplate.delete(baseUrl + "/members/" + member.getId());
+
+            ResponseEntity<Map> response = restTemplate.getForEntity(
+                    baseUrl + "/members/" + member.getId(), Map.class);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody().get("active")).isEqualTo(false);
+        }
+
+        @Test
+        @DisplayName("should return 400 when creating member with invalid email")
+        void shouldReturn400_WhenInvalidEmail() {
+            Member invalid = new Member("Bad User", "not-an-email", MembershipType.STANDARD);
+
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    baseUrl + "/members", invalid, Map.class);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    @Nested
+    @DisplayName("Search & Filter API")
+    class SearchApiTests {
+
+        @Test
+        @DisplayName("should search books by keyword via GET /api/books/search?keyword=...")
+        void shouldSearchBooks() {
+            createTestBook("978-1", "Spring Boot In Action", "Craig Walls");
+            createTestBook("978-2", "Spring Microservices", "Rajesh Ojha");
+            createTestBook("978-3", "Kotlin In Action", "Dmitry Jemerov");
+
+            ResponseEntity<Book[]> response = restTemplate.getForEntity(
+                    baseUrl + "/books/search?keyword=Spring", Book[].class);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody()).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("should get active borrows for a member")
+        void shouldGetActiveBorrows() {
+            Member member = createTestMember("Alice", "alice@test.com", MembershipType.STANDARD);
+            Book book1 = createTestBook("978-1", "Book One", "Author");
+            Book book2 = createTestBook("978-2", "Book Two", "Author");
+
+            restTemplate.postForEntity(baseUrl + "/borrows",
+                    new BorrowRequest(book1.getId(), member.getId()), Map.class);
+            ResponseEntity<Map> borrow2 = restTemplate.postForEntity(baseUrl + "/borrows",
+                    new BorrowRequest(book2.getId(), member.getId()), Map.class);
+
+            Number borrowId = (Number) borrow2.getBody().get("id");
+            restTemplate.postForEntity(
+                    baseUrl + "/borrows/" + borrowId.longValue() + "/return", null, Map.class);
+
+            ResponseEntity<Map[]> activeResponse = restTemplate.getForEntity(
+                    baseUrl + "/borrows/member/" + member.getId() + "/active", Map[].class);
+
+            assertThat(activeResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(activeResponse.getBody()).hasSize(1);
+        }
+    }
+}
